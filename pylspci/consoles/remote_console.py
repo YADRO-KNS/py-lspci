@@ -1,7 +1,9 @@
 import time
-from typing import List, Union, TextIO
+from typing import List, Union
 
 import paramiko
+
+from .console import Console, CommandFailed
 
 
 class SSHConnectionError(Exception):
@@ -16,48 +18,33 @@ class SSHConnectionError(Exception):
         return self.message
 
 
-class SSHCommandFailed(Exception):
-    """
-    Running a command failed with non-zero exit code.
-    """
-
-    def __init__(self, command: str, output: List[str], exitcode: int) -> None:
-        self.command = command
-        self.output = output
-        self.exitcode = exitcode
-
-    def __str__(self) -> str:
-        return "Command '{command}' exited with {code}. Output: {output}".format(
-            command=self.command, code=self.exitcode, output=self.output)
-
-
 # noinspection PyBroadException
-class SSHConnection(object):
-    def __init__(self, ip: str = None, username: str = None, password: str = None, logfile: TextIO = None):
+class SSHConsole(Console):
+    def __init__(self, ip: str, username: str, password: str, port: int = 22):
         self.ip = ip
         self.username = username
         self.password = password
-        self.logfile = logfile
-        self.paramiko_client: Union[paramiko.SSHClient, None] = None
+        self.port = port
+        self._paramiko_client: Union[paramiko.SSHClient, None] = None
 
-    def new_client(self) -> paramiko.SSHClient:
+    def _new_client(self) -> paramiko.SSHClient:
         """
         Creates new instance of  connection, set its controls and return it.
         :return: Instance of paramiko client.
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.paramiko_client = ssh
-        return self.paramiko_client
+        self._paramiko_client = ssh
+        return self._paramiko_client
 
     def is_connected(self) -> bool:
         """
         :return: Current connection state
         """
         state = False
-        if self.paramiko_client is not None:
+        if self._paramiko_client is not None:
             try:
-                state = self.paramiko_client.get_transport().is_active()
+                state = self._paramiko_client.get_transport().is_active()
             except Exception:
                 pass
         return state
@@ -68,7 +55,13 @@ class SSHConnection(object):
         :return: Nothing.
         """
         self.terminate()
-        self.new_client().connect(hostname=self.ip, username=self.username, password=self.password, look_for_keys=False, allow_agent=False)
+        self._new_client().connect(
+            hostname=self.ip,
+            port=self.port,
+            username=self.username,
+            password=self.password,
+            look_for_keys=False,
+            allow_agent=False)
 
     def terminate(self):
         """
@@ -76,7 +69,7 @@ class SSHConnection(object):
         :return: Nothing.
         """
         if self.is_connected():
-            self.paramiko_client.close()
+            self._paramiko_client.close()
 
     def _get_console(self, attempts: int = 60, retry_timeout: Union[int, float] = 2) -> paramiko.SSHClient:
         """
@@ -93,7 +86,7 @@ class SSHConnection(object):
             counter += 1
             if counter > attempts:
                 raise SSHConnectionError("Cannot login via SSH")
-        return self.paramiko_client
+        return self._paramiko_client
 
     def run_command(self, command: str, timeout: int = 60, sudo: bool = True) -> List[str]:
         """
@@ -107,9 +100,6 @@ class SSHConnection(object):
         if self.username != 'root' and sudo is True:
             command = "sudo -S -p '' " + command
 
-        if self.logfile is not None:
-            self.logfile.write(('%s@%s:~$ %s' % (self.username, self.ip, command)))
-
         stdin, stdout, stderr = self._get_console().exec_command(command=command, timeout=timeout)
 
         if self.username != 'root' and sudo is True:
@@ -119,15 +109,8 @@ class SSHConnection(object):
         exitcode: int = stdout.channel.recv_exit_status()
         output = [line.decode('utf-8') for line in stdout.read().splitlines()]
 
-        if self.logfile is not None:
-            for line in output:
-                self.logfile.write(line)
-
-            self.logfile.write(('%s@%s:~$ %s' % (self.username, self.ip, 'echo $?')))
-            self.logfile.write(('%s@%s:~$ %s' % (self.username, self.ip, exitcode)))
-
         if exitcode != 0:
-            raise SSHCommandFailed(command, output, exitcode)
+            raise CommandFailed(command, output, exitcode)
         return output
 
     def run_command_ignore_fail(self, command: str, timeout: int = 60, sudo: bool = True) -> List[str]:
@@ -140,6 +123,6 @@ class SSHConnection(object):
         """
         try:
             output: List[str] = self.run_command(command, timeout, sudo)
-        except SSHCommandFailed as error:
+        except CommandFailed as error:
             output = error.output
         return output
