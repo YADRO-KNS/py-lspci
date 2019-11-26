@@ -1,7 +1,10 @@
 import unittest
+from typing import TextIO
 from unittest.mock import Mock, MagicMock, call, patch
 
-from pylspci.consoles.remote_console import *
+import paramiko
+
+from pylspci.consoles.remote_console import SSHConsole, CommandFailed
 
 
 class TestSSHConsole(unittest.TestCase):
@@ -11,7 +14,8 @@ class TestSSHConsole(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.ssh = SSHConsole(ip='127.0.0.1', username='test_name', password='12345678')
+        logfile = MagicMock(spec=TextIO)
+        cls.ssh = SSHConsole(ip='127.0.0.1', username='test_name', password='12345678', logfile=logfile)
 
 
 class TestSSHConsoleCreation(TestSSHConsole):
@@ -23,6 +27,9 @@ class TestSSHConsoleCreation(TestSSHConsole):
         self.assertEqual(self.ssh.ip, '127.0.0.1')
         self.assertEqual(self.ssh.username, 'test_name')
         self.assertEqual(self.ssh.password, '12345678')
+        self.assertEqual(self.ssh.port, 22)
+        self.assertIsNotNone(self.ssh.logfile)
+        self.assertIsInstance(self.ssh.logfile, MagicMock)
 
 
 class TestSSHConsoleNewClient(TestSSHConsole):
@@ -50,11 +57,13 @@ class TestSSHConsoleIsConnected(TestSSHConsole):
         """
         Check against success value of paramiko transport
         """
-        mock_client = Mock()
-        mock_transport = Mock()
+        mock_client = MagicMock(spec=paramiko.SSHClient)
+        mock_transport = MagicMock(spec=paramiko.Transport)
         mock_transport.is_active = Mock(return_value=True)
         mock_client.get_transport = Mock(return_value=mock_transport)
         self.ssh._paramiko_client = mock_client
+
+        ####################################################
 
         result = self.ssh.is_connected()
         mock_client.get_transport.assert_called_once()
@@ -65,11 +74,13 @@ class TestSSHConsoleIsConnected(TestSSHConsole):
         """
         Check against failure value of paramiko transport
         """
-        mock_client = Mock()
-        mock_transport = Mock()
+        mock_client = MagicMock(spec=paramiko.SSHClient)
+        mock_transport = MagicMock(spec=paramiko.Transport)
         mock_transport.is_active = Mock(return_value=False)
         mock_client.get_transport = Mock(return_value=mock_transport)
         self.ssh._paramiko_client = mock_client
+
+        ####################################################
 
         result = self.ssh.is_connected()
         mock_client.get_transport.assert_called_once()
@@ -80,12 +91,13 @@ class TestSSHConsoleIsConnected(TestSSHConsole):
         """
         Check in case of exception
         """
-        mock_client = Mock()
-        mock_transport = Mock()
-        mock_transport.is_active = MagicMock()
-        mock_transport.is_active.side_effect = Exception('Error')
+        mock_client = MagicMock(spec=paramiko.SSHClient)
+        mock_transport = MagicMock(spec=paramiko.Transport)
+        mock_transport.is_active = MagicMock(side_effect=Exception('Error'))
         mock_client.get_transport = Mock(return_value=mock_transport)
         self.ssh._paramiko_client = mock_client
+
+        ####################################################
 
         result = self.ssh.is_connected()
         mock_client.get_transport.assert_called_once()
@@ -98,7 +110,7 @@ class TestSSHConsoleTerminate(TestSSHConsole):
         """
         Check terminate if connection exist
         """
-        mock_client = Mock()
+        mock_client = MagicMock(spec=paramiko.SSHClient)
         is_connected_mock = Mock(return_value=True)
         self.ssh._paramiko_client = mock_client
         self.ssh.is_connected = is_connected_mock
@@ -111,7 +123,7 @@ class TestSSHConsoleTerminate(TestSSHConsole):
         """
         Check terminate if there is no connection
         """
-        mock_client = Mock()
+        mock_client = MagicMock(spec=paramiko.SSHClient)
         is_connected_mock = Mock(return_value=False)
         self.ssh._paramiko_client = mock_client
         self.ssh.is_connected = is_connected_mock
@@ -127,7 +139,7 @@ class TestSSHConsoleConnect(TestSSHConsole):
         Check connect procedure
         """
         terminate_mock = Mock()
-        mock_client = Mock()
+        mock_client = MagicMock(spec=paramiko.SSHClient)
         mock_new_client = Mock(return_value=mock_client)
         self.ssh.terminate = terminate_mock
         self.ssh._new_client = mock_new_client
@@ -149,7 +161,7 @@ class TestSSHConsoleGetConsole(TestSSHConsole):
         """
         Check successful attempt of console creation.
         """
-        mock_client = Mock()
+        mock_client = MagicMock(spec=paramiko.SSHClient)
         is_connected_mock = Mock(return_value=True)
         self.ssh._paramiko_client = mock_client
         self.ssh.is_connected = is_connected_mock
@@ -162,7 +174,7 @@ class TestSSHConsoleGetConsole(TestSSHConsole):
         """
         Check successful attempt of console creation after several attempts.
         """
-        mock_client = Mock()
+        mock_client = MagicMock(spec=paramiko.SSHClient)
         is_connected_mock = MagicMock()
         is_connected_mock.side_effect = [False, False, True]
         mock_connect = Mock()
@@ -179,7 +191,7 @@ class TestSSHConsoleGetConsole(TestSSHConsole):
         """
         Check failure of console creation after several attempts.
         """
-        mock_client = Mock()
+        mock_client = MagicMock(spec=paramiko.SSHClient)
         is_connected_mock = MagicMock()
         is_connected_mock.side_effect = [False, False, False, False, False]
         mock_connect = Mock()
@@ -220,6 +232,15 @@ class TestSSHConsoleRunCommand(TestSSHConsole):
 
         result = self.ssh.run_command(command='test command', timeout=1, sudo=True)
 
+        self.ssh.logfile.assert_has_calls([
+            call.write("test_name@127.0.0.1:~$ sudo -S -p '' test command"),
+            call.write('test1'),
+            call.write('test2'),
+            call.write('test3'),
+            call.write('test_name@127.0.0.1:~$ echo $?'),
+            call.write('test_name@127.0.0.1:~$ 0')
+        ])
+
         stdout_mock.channel.recv_exit_status.assert_called_once()
         stdout_mock.read.assert_called_once()
         console_mock.exec_command.assert_called_with(command="sudo -S -p '' test command", timeout=1)
@@ -247,6 +268,15 @@ class TestSSHConsoleRunCommand(TestSSHConsole):
         self.ssh._get_console = get_console_mock
 
         result = self.ssh.run_command(command='test command', timeout=1, sudo=True)
+
+        self.ssh.logfile.assert_has_calls([
+            call.write("root@127.0.0.1:~$ test command"),
+            call.write('test1'),
+            call.write('test2'),
+            call.write('test3'),
+            call.write('root@127.0.0.1:~$ echo $?'),
+            call.write('root@127.0.0.1:~$ 0')
+        ])
 
         stdout_mock.channel.recv_exit_status.assert_called_once()
         stdout_mock.read.assert_called_once()
@@ -280,6 +310,15 @@ class TestSSHConsoleRunCommand(TestSSHConsole):
         except Exception as error:
             exception = error
 
+        self.ssh.logfile.assert_has_calls([
+            call.write("root@127.0.0.1:~$ test command"),
+            call.write('test1'),
+            call.write('test2'),
+            call.write('test3'),
+            call.write('root@127.0.0.1:~$ echo $?'),
+            call.write('root@127.0.0.1:~$ 1')
+        ])
+
         stdout_mock.channel.recv_exit_status.assert_called_once()
         stdout_mock.read.assert_called_once()
         console_mock.exec_command.assert_called_with(command='test command', timeout=1)
@@ -297,7 +336,7 @@ class TestSSHConsoleRunCommandIgnoreFailure(TestSSHConsole):
 
         result = self.ssh.run_command_ignore_fail(command='test command', timeout=1, sudo=True)
 
-        run_command_mock.assert_called_with('test command', 1, True)
+        run_command_mock.assert_called_with('test command', 1, True, False)
         self.assertEqual(result, ['test1', 'test2', 'test3'])
 
     def test_run_command_ignore_failre_exception(self):
@@ -307,5 +346,5 @@ class TestSSHConsoleRunCommandIgnoreFailure(TestSSHConsole):
 
         result = self.ssh.run_command_ignore_fail(command='test command', timeout=1, sudo=True)
 
-        run_command_mock.assert_called_with('test command', 1, True)
+        run_command_mock.assert_called_with('test command', 1, True, False)
         self.assertEqual(result, ['test1', 'test2', 'test3'])

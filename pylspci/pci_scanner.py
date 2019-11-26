@@ -1,5 +1,5 @@
 import re
-from typing import Union, List
+from typing import Union, List, TextIO
 
 from .consoles import SSHConsole, LocalConsole
 from .pci_parser import PCIParser, PCIDevice
@@ -7,11 +7,12 @@ from .pci_parser import PCIParser, PCIDevice
 
 # noinspection PyBroadException
 class ScannerPCI(object):
-    def __init__(self, ip: str, username: str = None, password: str = None, port: int = 22):
+    def __init__(self, ip: str, username: str = None, password: str = None, port: int = 22, logfile: TextIO = None):
         self.ip = ip
         self.username = username
         self.password = password
         self.port = port
+        self.logfile = logfile
         self._parser: Union[PCIParser, None] = None
         self._console: Union[SSHConsole, LocalConsole, None] = None
 
@@ -19,14 +20,17 @@ class ScannerPCI(object):
         if self._console is None:
             if self.ip == '127.0.0.1' or self.ip == 'localhost':
                 self._console = LocalConsole(
-                    password=self.password
+                    password=self.password,
+                    logfile=self.logfile
                 )
             else:
                 self._console = SSHConsole(
                     ip=self.ip,
                     username=self.username,
                     password=self.password,
-                    port=self.port)
+                    port=self.port,
+                    logfile=self.logfile
+                )
         return self._console
 
     def _get_pci_addresses(self) -> List[str]:

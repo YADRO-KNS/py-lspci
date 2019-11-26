@@ -1,5 +1,5 @@
 import time
-from typing import List, Union
+from typing import List, Union, TextIO
 
 import paramiko
 
@@ -20,11 +20,12 @@ class SSHConnectionError(Exception):
 
 # noinspection PyBroadException
 class SSHConsole(Console):
-    def __init__(self, ip: str, username: str, password: str, port: int = 22):
+    def __init__(self, ip: str, username: str, password: str, port: int = 22, logfile: TextIO = None):
         self.ip = ip
         self.username = username
         self.password = password
         self.port = port
+        self.logfile = logfile
         self._paramiko_client: Union[paramiko.SSHClient, None] = None
 
     def _new_client(self) -> paramiko.SSHClient:
@@ -88,17 +89,21 @@ class SSHConsole(Console):
                 raise SSHConnectionError("Cannot login via SSH")
         return self._paramiko_client
 
-    def run_command(self, command: str, timeout: int = 60, sudo: bool = True) -> List[str]:
+    def run_command(self, command: str, timeout: int = 60, sudo: bool = True, suppress_logs: bool = False) -> List[str]:
         """
         Executes command on target machine and return output as list of string.
         After execution procedure will check command exit code and will raise CommandFailed if command failed.
         :param sudo: Run command with sudo privileges in case if user isn't root.
         :param command: String with command to execute.
         :param timeout: Timeout of command execution. In case if command will not return exit code before timeout expired exception will be raised.
+        :param suppress_logs: boolean flag  if set as True will suppress log output in logfile.
         :return: List of output string.
         """
         if self.username != 'root' and sudo is True:
             command = "sudo -S -p '' " + command
+
+        if self.logfile is not None and suppress_logs is False:
+            self.logfile.write(('%s@%s:~$ %s' % (self.username, self.ip, command)))
 
         stdin, stdout, stderr = self._get_console().exec_command(command=command, timeout=timeout)
 
@@ -109,20 +114,28 @@ class SSHConsole(Console):
         exitcode: int = stdout.channel.recv_exit_status()
         output = [line.decode('utf-8') for line in stdout.read().splitlines()]
 
+        if self.logfile is not None and suppress_logs is False:
+            for line in output:
+                self.logfile.write(line)
+
+            self.logfile.write(('%s@%s:~$ %s' % (self.username, self.ip, 'echo $?')))
+            self.logfile.write(('%s@%s:~$ %s' % (self.username, self.ip, exitcode)))
+
         if exitcode != 0:
             raise CommandFailed(command, output, exitcode)
         return output
 
-    def run_command_ignore_fail(self, command: str, timeout: int = 60, sudo: bool = True) -> List[str]:
+    def run_command_ignore_fail(self, command: str, timeout: int = 60, sudo: bool = True, suppress_logs: bool = False) -> List[str]:
         """
         Executes command on target machine and return output as list of string.
         :param sudo: Run command with sudo privileges in case if user isn't root.
         :param command: String with command to execute.
         :param timeout: Timeout of command execution. In case if command will not return exit code before timeout expired exception will be raised.
+        :param suppress_logs: boolean flag  if set as True will suppress log output in logfile.
         :return: List of output string.
         """
         try:
-            output: List[str] = self.run_command(command, timeout, sudo)
+            output: List[str] = self.run_command(command, timeout, sudo, suppress_logs)
         except CommandFailed as error:
             output = error.output
         return output
