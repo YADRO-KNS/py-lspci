@@ -126,7 +126,7 @@ class PCIDevice(object):
     def match(self, **kwargs) -> bool:
         result = True
         for key, value in kwargs.items():
-            if key in self.__dir__():
+            if key in self.__dir__() and result is not False:
                 if type(value) is str and value.startswith('*') and type(getattr(self, key)) is str:
                     result = (value.replace('*', '').upper() in getattr(self, key).upper())
                 else:
