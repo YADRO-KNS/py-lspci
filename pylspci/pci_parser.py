@@ -215,6 +215,6 @@ class PCIParser(object):
                     else:
                         line_counter += 1
 
-            if len(temp_list) is not 0:
+            if len(temp_list) != 0:
                 result = temp_list
         return result
