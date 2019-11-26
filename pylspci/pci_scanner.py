@@ -5,6 +5,14 @@ from .consoles import SSHConsole, LocalConsole
 from .pci_parser import PCIParser, PCIDevice
 
 
+class DoesNotExist(Exception):
+    def __init__(self, **kwargs):
+        self.arguments = kwargs
+
+    def __str__(self):
+        return 'Unable to find PCI Device matching: {query}'.format(query=str(self.arguments))
+
+
 # noinspection PyBroadException
 class ScannerPCI(object):
     def __init__(self, ip: str, username: str = None, password: str = None, port: int = 22, logfile: TextIO = None):
@@ -84,7 +92,7 @@ class ScannerPCI(object):
         if len(result) != 0:
             return result[0]
         else:
-            raise Exception
+            raise DoesNotExist(**kwargs)
 
     def get_connected(self, parent: PCIDevice, force_rescan: bool = False) -> List[PCIDevice]:
         if parent.is_host_bridge:

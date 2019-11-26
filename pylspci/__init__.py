@@ -1,5 +1,6 @@
 __all__ = [
-    'ScannerPCI'
+    'ScannerPCI', 'DoesNotExist'
 ]
 
+from .pci_scanner import DoesNotExist
 from .pci_scanner import ScannerPCI
