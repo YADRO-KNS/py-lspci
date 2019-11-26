@@ -43,15 +43,16 @@ class PCIDevice(object):
     def __init__(self, data: List[str]) -> None:
         self.data = data
         self.pci_address = self.data[0].split(' ')[0].strip()
-        self.type = self.data[0].replace((self.pci_address + ' '), '').split(':')[0]
-        self.name = self.data[0].replace((self.pci_address + ' '), '').split(':')[1]
+        self.type = self.data[0].replace((self.pci_address + ' '), '').split(':')[0].strip()
+        self.name = self.data[0].replace((self.pci_address + ' '), '').split(':')[1].strip()
+
         self.addr_dom = self.pci_address.split(':')[0].upper()
         self.addr_bus = self.pci_address.split(':')[1].upper()
         self.addr_num = self.pci_address.split(':')[2].split('.')[0].upper()
         self.addr_fun = self.pci_address.split(':')[2].split('.')[1].upper()
 
-        self.control = self.data[1].split(':')[1]
-        self.status = self.data[2].split(':')[1]
+        self.control: Union[str, None] = None
+        self.status: Union[str, None] = None
         self.capabilities: List[str] = []
 
         self.latency: Union[str, None] = None
@@ -91,18 +92,19 @@ class PCIDevice(object):
         self.error_src: Union[str, None] = None
         self.interrupt: Union[str, None] = None
         self.address: Union[str, None] = None
+        self.kernel_driver_in_use: Union[str, None] = None
 
         self.pci_link: Union[PCILink, None] = None
         self.pci_bus: Union[PCIBus, None] = None
 
         for entry in self.data[3:len(self.data) + 1]:
             name = entry.split(':')[0].replace(' ', '').replace('/', '').replace('[', '').replace(']', '').replace('-', '').lower()
-            content = entry.replace(entry.split(':')[0] + ':', '')
+            content = entry.replace(entry.split(':')[0] + ':', '').strip()
 
-            if name != 'control' and name != 'status' and name != 'capabilities':
+            if name != 'capabilities':
                 is_assigned = False
                 for field in self.__dict__.keys():
-                    if field.replace('_', '') == name:
+                    if field.replace('_', '') == name and getattr(self, field) is None:
                         setattr(self, field, content)
                         is_assigned = True
 
@@ -121,6 +123,25 @@ class PCIDevice(object):
         if self.bus is not None:
             self.pci_bus = PCIBus(self.bus)
 
+    def match(self, **kwargs) -> bool:
+        result = True
+        for key, value in kwargs.items():
+            if key in self.__dir__():
+                if type(value) is str and value.startswith('*') and type(getattr(self, key)) is str:
+                    result = (value.replace('*', '').upper() in getattr(self, key).upper())
+                else:
+                    result = (value == getattr(self, key))
+            else:
+                result = False
+        return result
+
+    def _check_capabilities(self, value: str) -> bool:
+        result = False
+        for line in self.capabilities:
+            if value in line:
+                result = True
+        return result
+
     @property
     def device_serial_number(self) -> Union[str, None]:
         result = None
@@ -129,23 +150,55 @@ class PCIDevice(object):
                 result = line.split('Device Serial Number')[-1].strip()
         return result
 
+    @property
+    def subsystem(self) -> Union[str, None]:
+        result = None
+        for line in self.capabilities:
+            if 'Subsystem:' in line:
+                result = line.split('Subsystem:')[-1].strip()
+        return result
+
+    @property
+    def is_host_bridge(self) -> bool:
+        return self.type == 'Host bridge'
+
+    @property
+    def is_root_port(self) -> bool:
+        return self._check_capabilities(value='Root Port')
+
+    @property
+    def is_downstream(self) -> bool:
+        return self._check_capabilities(value='Downstream Port') and self.type == 'PCI bridge'
+
+    @property
+    def is_upstream(self) -> bool:
+        return self._check_capabilities(value='Upstream Port') and self.type == 'PCI bridge'
+
+    @property
+    def is_endpoint(self) -> bool:
+        return not self.is_host_bridge and not self.is_root_port and not self.is_upstream and not self.is_downstream
+
+    def __str__(self):
+        if self.pci_link is not None:
+            link = '[{width}/{max_width}][{speed}/{max_speed}]'.format(
+                width=self.pci_link.width, max_width=self.pci_link.max_width, speed=self.pci_link.speed, max_speed=self.pci_link.max_speed)
+        else:
+            link = ''
+        return '{address} {type} {name} {link}'.format(address=self.pci_address, type=self.type, name=self.name, link=link)
+
 
 # noinspection PyBroadException
 class PCIParser(object):
     def __init__(self, data: List[List[str]]) -> None:
         self.data = data
         self.devices: List[PCIDevice] = []
-
         self.process_data(data=self.data)
 
     def process_data(self, data: List[List[str]]) -> None:
         for entry in data:
             result = self.parce_single_device(data=entry)
             if result is not None:
-                try:
-                    self.devices.append(PCIDevice(data=result))
-                except Exception:
-                    pass
+                self.devices.append(PCIDevice(data=result))
 
     @staticmethod
     def parce_single_device(data: List[str]) -> Union[List[str], None]:
@@ -165,10 +218,3 @@ class PCIParser(object):
             if len(temp_list) is not 0:
                 result = temp_list
         return result
-
-    def get_pci_device(self, address: str) -> Union[PCIDevice, None]:
-        target = None
-        for device in self.devices:
-            if device.pci_address.upper() == address.upper():
-                target = device
-        return target
