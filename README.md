@@ -45,29 +45,47 @@ scanner = pylspci.ScannerPCI(ip='127.0.0.1', password='pa$$w0rd')
 ```
 
 With *ScannerPCI* object now we can write requests to get data from lspci output, main tool to do that is 
-**select** method.
+**select** method, that will return *PCISelect* iterator object.
 ```
 >>> scanner.select()
-[<pylspci.pci_parser.PCIDevice object at 0x7f6a09837f60>, <pylspci.pci_parser.PCIDevice object at 0x7f6a0acb3f28>, ...]
+<pylspci.pci_scanner.PCISelect object at 0x7fa1dcda3940>
 ```
 Select will return all PCI devices that matches select request.
 ```
->>> scanner.select(pci_address='0000:00:00.0')
-[<pylspci.pci_parser.PCIDevice object at 0x7f6a09837f60>]
+>>> scanner.select().count()
+22
+>>> scanner.select(pci_address='0000:00:00.0').count()
+1
 ```
 For broad select requests you could use asterisk:
 ```
->>> len(scanner.select(type='Bridge'))
+>>> scanner.select(type='Bridge').count()
 0
->>> len(scanner.select(type='*Bridge'))
+>>> scanner.select(type='*Bridge').count()
 10
 ```
-You can use multiple keyword arguments to specify search:
+Use multiple keyword arguments to specify search. 
+You could search by any attributes or properties of *PCIDevice* class.:
 ```
->>> len(scanner.select(type='*Bridge', is_upstream=True))
+>>> scanner.select(type='*Bridge', is_upstream=True).count()
 1
 ```
-You could search by any attributes or properties of *PCIDevice* class.
+With *PCISelect* object you could loop over PCI devices that matches search parameters:
+```
+>>> for device in scanner.select(is_downstream=True):
+...     print(device)
+...
+0000:08:00.0 PCI bridge Intel Corporation JHL6240 Thunderbolt 3 Bridge [x4/x4][2.5GT/s/2.5GT/s]
+0000:08:01.0 PCI bridge Intel Corporation JHL6240 Thunderbolt 3 Bridge [x4/x4][2.5GT/s/2.5GT/s]
+0000:08:02.0 PCI bridge Intel Corporation JHL6240 Thunderbolt 3 Bridge [x4/x4][2.5GT/s/2.5GT/s]
+```
+Also you can chain your select requests:
+```
+>>> scanner.select(type='PCI bridge').count()
+8
+>>> scanner.select(type='PCI bridge').select(is_upstream=True).count()
+1
+```
 
 Another search method is **get**. Basically it is the same select that will return first matching object
  instead of list of objects or will raise exception in case if there was no matches.
@@ -81,12 +99,12 @@ Traceback (most recent call last):
     if parent.is_host_bridge:
 pylspci.pci_scanner.DoesNotExist: Unable to find PCI Device matching: {'type': '*Host', 'is_upstream': True}
 ```
-Another tool is **get_connected** method of Scanner, that returns list of *PCIDevices* connected to passed device.
+Another tool is **get_connected** method of Scanner, that returns *PCISelect* with all devices connected to passed device.
 For Host Bridge it will return all devices in Root Complex. For Upstream of PCI Bridge - all Downstreams. 
 For Downstream or Root Ports - all connected Upstreams or Endpoints. End for Endpoints it will return empty list.
 
 ```
->>> len(scanner.get_connected(scanner.get(type='*Host')))
+>>> scanner.get_connected(scanner.get(type='*Host')).count()
 14
 ```
 py-lspci uses cached value of lspci output, in case if you need to refresh that data, use *force_rescan* argument, 
