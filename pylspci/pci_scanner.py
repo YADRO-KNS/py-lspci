@@ -13,6 +13,39 @@ class DoesNotExist(Exception):
         return 'Unable to find PCI Device matching: {query}'.format(query=str(self.arguments))
 
 
+class PCISelect(object):
+    def __init__(self, devices: List[PCIDevice]):
+        self._devices = devices
+        self._index = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._index >= len(self._devices):
+            self._index = 0
+            raise StopIteration
+        else:
+            self._index += 1
+            return self._devices[(self._index - 1)]
+
+    def count(self) -> int:
+        return len(self._devices)
+
+    def select(self, **kwargs) -> 'PCISelect':
+        if len(kwargs.items()) != 0:
+            return PCISelect(devices=[d for d in self._devices if d.match(**kwargs)])
+        else:
+            return PCISelect(devices=self._devices)
+
+    def get(self, **kwargs) -> Union[PCIDevice, None]:
+        result = self.select(**kwargs)
+        if result.count() != 0:
+            return next(result)
+        else:
+            raise DoesNotExist(**kwargs)
+
+
 # noinspection PyBroadException
 class ScannerPCI(object):
     def __init__(self, ip: str, username: str = None, password: str = None, port: int = 22, logfile: TextIO = None):
@@ -81,25 +114,18 @@ class ScannerPCI(object):
     def pci_rescan(self) -> None:
         self._get_console().run_command(command="sh -c 'echo 1 > /sys/bus/pci/rescan'", sudo=True)
 
-    def select(self, force_rescan: bool = False, **kwargs) -> List[PCIDevice]:
-        if len(kwargs.items()) != 0:
-            return [d for d in self._get_pci(force_rescan=force_rescan) if d.match(**kwargs)]
-        else:
-            return self._get_pci(force_rescan=force_rescan)
+    def select(self, force_rescan: bool = False, **kwargs) -> PCISelect:
+        return PCISelect(devices=self._get_pci(force_rescan=force_rescan)).select(**kwargs)
 
-    def get(self, force_rescan: bool = False, **kwargs):
-        result = self.select(force_rescan=force_rescan, **kwargs)
-        if len(result) != 0:
-            return result[0]
-        else:
-            raise DoesNotExist(**kwargs)
+    def get(self, force_rescan: bool = False, **kwargs) -> Union[PCIDevice, None]:
+        return self.select(force_rescan=force_rescan).get(**kwargs)
 
-    def get_connected(self, parent: PCIDevice, force_rescan: bool = False) -> List[PCIDevice]:
+    def get_connected(self, parent: PCIDevice, force_rescan: bool = False) -> PCISelect:
         if parent.is_host_bridge:
-            return [d for d in self._get_pci(force_rescan=force_rescan) if d.addr_dom == parent.addr_dom and d.addr_bus == parent.addr_bus and d != parent]
+            return PCISelect(devices=[d for d in self.select(force_rescan=force_rescan, addr_dom=parent.addr_dom, addr_bus=parent.addr_bus) if d != parent])
         elif parent.is_root_port or parent.is_downstream:
-            return [d for d in self._get_pci(force_rescan=force_rescan) if d.addr_dom == parent.addr_dom and d.addr_bus == parent.pci_bus.secondary]
+            return PCISelect(devices=[d for d in self.select(force_rescan=force_rescan, addr_dom=parent.addr_dom, addr_bus=parent.pci_bus.secondary)])
         elif parent.is_upstream:
-            return [d for d in self._get_pci(force_rescan=force_rescan) if d.is_downstream and d.pci_bus.primary == parent.pci_bus.secondary]
+            return PCISelect(devices=[d for d in self.select(force_rescan=force_rescan, is_downstream=True) if d.pci_bus.primary == parent.pci_bus.secondary])
         else:
-            return []
+            return PCISelect(devices=[])
