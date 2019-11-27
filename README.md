@@ -30,7 +30,8 @@ pip3 install py-lspci
 ```
 
 ## Examples 
---------
+
+### Connection
 First we have to establish connection to our target as user with sudo privileges:
 ```python
 import pylspci
@@ -43,7 +44,7 @@ import pylspci
 
 scanner = pylspci.ScannerPCI(ip='127.0.0.1', password='pa$$w0rd')
 ```
-
+### Select
 With *ScannerPCI* object now we can write requests to get data from lspci output, main tool to do that is 
 **select** method, that will return *PCISelect* iterator object.
 ```
@@ -86,7 +87,7 @@ Also you can chain your select requests:
 >>> scanner.select(type='PCI bridge').select(is_upstream=True).count()
 1
 ```
-
+### Get
 Another search method is **get**. Basically it is the same select that will return first matching object
  instead of list of objects or will raise exception in case if there was no matches.
 ```
@@ -99,6 +100,7 @@ Traceback (most recent call last):
     if parent.is_host_bridge:
 pylspci.pci_scanner.DoesNotExist: Unable to find PCI Device matching: {'type': '*Host', 'is_upstream': True}
 ```
+### Get Connected
 Another tool is **get_connected** method of Scanner, that returns *PCISelect* with all devices connected to passed device.
 For Host Bridge it will return all devices in Root Complex. For Upstream of PCI Bridge - all Downstreams. 
 For Downstream or Root Ports - all connected Upstreams or Endpoints. End for Endpoints it will return empty list.
@@ -112,7 +114,7 @@ for any of mentioned methods.
 ```
 >>> scanner.select(force_rescan=True)
 ```
-
+### PCI rescan procedure
 Last but not least method of *ScannerPCI* is **pci_rescan** that causes full rescan of PCI bus on target machine.
 Be careful with this one, because not all distros support proper PCI rescan.
 
