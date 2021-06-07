@@ -1,13 +1,13 @@
-from typing import List, Union
+import typing
 
 
 class PCIBus(object):
     def __init__(self, data: str):
         self._data = data
-        self.primary: Union[str, None] = None
-        self.secondary: Union[str, None] = None
-        self.subordinate: Union[str, None] = None
-        self.sec_latency: Union[str, None] = None
+        self.primary: typing.Optional[str] = None
+        self.secondary: typing.Optional[str] = None
+        self.subordinate: typing.Optional[str] = None
+        self.sec_latency: typing.Optional[str] = None
 
         for entry in self._data.split(','):
             name = entry.split('=')[0].strip()
@@ -34,68 +34,85 @@ class PCILink(object):
         self.speed = lnksta.split(',')[0].split(' ')[1]
         self.width = lnksta.split(',')[1].split(' ')[2]
 
+    def __str__(self) -> str:
+        return f'[{self.width}/{self.max_width}][{self.speed}/{self.max_speed}]'
+
+
+class PCIAddress(object):
+    def __init__(self, address: str):
+        self.address = address
+        self.dom = self.address.split(':')[0].upper()
+        self.bus = self.address.split(':')[1].upper()
+        self.num = self.address.split(':')[2].split('.')[0].upper()
+        self.fun = self.address.split(':')[2].split('.')[1].upper()
+
+    def __str__(self) -> str:
+        return self.address
+
+    def __eq__(self, other: 'PCIAddress'):
+        return self.address.upper() == other.address.upper()
+
+    def __ne__(self, other):
+        return self.address.upper() != other.address.upper()
+
 
 class PCIDevice(object):
     """
     Mapper Class for PCI device.
     """
 
-    def __init__(self, data: List[str]) -> None:
+    def __init__(self, data: typing.List[str]) -> None:
         self.data = data
-        self.pci_address = self.data[0].split(' ')[0].strip()
-        self.type = self.data[0].replace((self.pci_address + ' '), '').split(':')[0].strip()
-        self.name = self.data[0].replace((self.pci_address + ' '), '').split(':')[1].strip()
 
-        self.addr_dom = self.pci_address.split(':')[0].upper()
-        self.addr_bus = self.pci_address.split(':')[1].upper()
-        self.addr_num = self.pci_address.split(':')[2].split('.')[0].upper()
-        self.addr_fun = self.pci_address.split(':')[2].split('.')[1].upper()
+        self.pci_address = PCIAddress(address=self.data[0].split(' ')[0].strip())
+        self.pci_link: typing.Optional[PCILink] = None
+        self.pci_bus: typing.Optional[PCIBus] = None
 
-        self.control: Union[str, None] = None
-        self.status: Union[str, None] = None
-        self.capabilities: List[str] = []
+        self.type = self.data[0].replace(f'{self.pci_address}', '').split(':')[0].strip()
+        self.name = self.data[0].replace(f'{self.pci_address}', '').split(':')[1].strip()
 
-        self.latency: Union[str, None] = None
-        self.numa_node: Union[str, None] = None
-        self.bus: Union[str, None] = None
-        self.io_behind_bridge: Union[str, None] = None
-        self.memory_behind_bridge: Union[str, None] = None
-        self.prefetchable_memory_behind_bridge: Union[str, None] = None
-        self.secondary_status: Union[str, None] = None
-        self.bridge_ctl: Union[str, None] = None
-        self.flags: Union[str, None] = None
-        self.devcap: Union[str, None] = None
-        self.devcap2: Union[str, None] = None
-        self.devctl: Union[str, None] = None
-        self.devctl2: Union[str, None] = None
-        self.devsta: Union[str, None] = None
-        self.lnkcap: Union[str, None] = None
-        self.lnkctl: Union[str, None] = None
-        self.lnkctl2: Union[str, None] = None
-        self.lnksta: Union[str, None] = None
-        self.lnksta2: Union[str, None] = None
-        self.rootctl: Union[str, None] = None
-        self.rootcap: Union[str, None] = None
-        self.rootsta: Union[str, None] = None
-        self.atomic_ops_cap: Union[str, None] = None
-        self.atomic_ops_ctl: Union[str, None] = None
-        self.transmit_margin: Union[str, None] = None
-        self.compliance_deemphasis: Union[str, None] = None
-        self.uesta: Union[str, None] = None
-        self.uemsk: Union[str, None] = None
-        self.uesvrt: Union[str, None] = None
-        self.cesta: Union[str, None] = None
-        self.cemsk: Union[str, None] = None
-        self.aercap: Union[str, None] = None
-        self.header_log: Union[str, None] = None
-        self.root_cmd: Union[str, None] = None
-        self.error_src: Union[str, None] = None
-        self.interrupt: Union[str, None] = None
-        self.address: Union[str, None] = None
-        self.kernel_driver_in_use: Union[str, None] = None
+        self.control: typing.Optional[str] = None
+        self.status: typing.Optional[str] = None
+        self.capabilities: typing.List[str] = []
 
-        self.pci_link: Union[PCILink, None] = None
-        self.pci_bus: Union[PCIBus, None] = None
+        self.latency: typing.Optional[str] = None
+        self.numa_node: typing.Optional[str] = None
+        self.bus: typing.Optional[str] = None
+        self.io_behind_bridge: typing.Optional[str] = None
+        self.memory_behind_bridge: typing.Optional[str] = None
+        self.prefetchable_memory_behind_bridge: typing.Optional[str] = None
+        self.secondary_status: typing.Optional[str] = None
+        self.bridge_ctl: typing.Optional[str] = None
+        self.flags: typing.Optional[str] = None
+        self.devcap: typing.Optional[str] = None
+        self.devcap2: typing.Optional[str] = None
+        self.devctl: typing.Optional[str] = None
+        self.devctl2: typing.Optional[str] = None
+        self.devsta: typing.Optional[str] = None
+        self.lnkcap: typing.Optional[str] = None
+        self.lnkctl: typing.Optional[str] = None
+        self.lnkctl2: typing.Optional[str] = None
+        self.lnksta: typing.Optional[str] = None
+        self.lnksta2: typing.Optional[str] = None
+        self.rootctl: typing.Optional[str] = None
+        self.rootcap: typing.Optional[str] = None
+        self.rootsta: typing.Optional[str] = None
+        self.atomic_ops_cap: typing.Optional[str] = None
+        self.atomic_ops_ctl: typing.Optional[str] = None
+        self.transmit_margin: typing.Optional[str] = None
+        self.compliance_deemphasis: typing.Optional[str] = None
+        self.uesta: typing.Optional[str] = None
+        self.uemsk: typing.Optional[str] = None
+        self.uesvrt: typing.Optional[str] = None
+        self.cesta: typing.Optional[str] = None
+        self.cemsk: typing.Optional[str] = None
+        self.aercap: typing.Optional[str] = None
+        self.header_log: typing.Optional[str] = None
+        self.root_cmd: typing.Optional[str] = None
+        self.error_src: typing.Optional[str] = None
+        self.interrupt: typing.Optional[str] = None
+        self.address: typing.Optional[str] = None
+        self.kernel_driver_in_use: typing.Optional[str] = None
 
         for entry in self.data[3:len(self.data) + 1]:
             name = entry.split(':')[0].replace(' ', '').replace('/', '').replace('[', '').replace(']', '').replace('-', '').lower()
@@ -109,7 +126,7 @@ class PCIDevice(object):
                         is_assigned = True
 
                 if is_assigned is False:
-                    setattr(self, 'aux_' + name, content)
+                    setattr(self, f'aux_{name}', content)
 
             elif name == 'capabilities':
                 self.capabilities.append(content)
@@ -143,7 +160,7 @@ class PCIDevice(object):
         return result
 
     @property
-    def device_serial_number(self) -> Union[str, None]:
+    def device_serial_number(self) -> typing.Optional[str]:
         result = None
         for line in self.capabilities:
             if 'Device Serial Number' in line:
@@ -151,7 +168,7 @@ class PCIDevice(object):
         return result
 
     @property
-    def subsystem(self) -> Union[str, None]:
+    def subsystem(self) -> typing.Optional[str]:
         result = None
         for line in self.capabilities:
             if 'Subsystem:' in line:
@@ -178,30 +195,42 @@ class PCIDevice(object):
     def is_endpoint(self) -> bool:
         return not self.is_host_bridge and not self.is_root_port and not self.is_upstream and not self.is_downstream
 
-    def __str__(self):
-        if self.pci_link is not None:
-            link = '[{width}/{max_width}][{speed}/{max_speed}]'.format(
-                width=self.pci_link.width, max_width=self.pci_link.max_width, speed=self.pci_link.speed, max_speed=self.pci_link.max_speed)
-        else:
-            link = ''
-        return '{address} {type} {name} {link}'.format(address=self.pci_address, type=self.type, name=self.name, link=link)
+    @property
+    def addr_dom(self) -> str:
+        return self.pci_address.dom
+
+    @property
+    def addr_bus(self) -> str:
+        return self.pci_address.bus
+
+    @property
+    def addr_num(self) -> str:
+        return self.pci_address.num
+
+    @property
+    def addr_fun(self) -> str:
+        return self.pci_address.fun
+
+    def __str__(self) -> str:
+        link = str(self.pci_link) if self.pci_link is not None else ''
+        return f'{self.pci_address} {self.type} {self.name} {link}'
 
 
 # noinspection PyBroadException
 class PCIParser(object):
-    def __init__(self, data: List[List[str]]) -> None:
+    def __init__(self, data: typing.List[typing.List[str]]) -> None:
         self.data = data
-        self.devices: List[PCIDevice] = []
+        self.devices: typing.List[PCIDevice] = []
         self.process_data(data=self.data)
 
-    def process_data(self, data: List[List[str]]) -> None:
+    def process_data(self, data: typing.List[typing.List[str]]) -> None:
         for entry in data:
             result = self.parce_single_device(data=entry)
             if result is not None:
                 self.devices.append(PCIDevice(data=result))
 
     @staticmethod
-    def parce_single_device(data: List[str]) -> Union[List[str], None]:
+    def parce_single_device(data: typing.List[str]) -> typing.Optional[typing.List[str]]:
         result = None
         if data is not None:
             temp_list = []

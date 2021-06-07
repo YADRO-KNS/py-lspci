@@ -8,7 +8,7 @@ with open('requirements.txt') as fp:
 
 setuptools.setup(
     name="py-lspci",
-    version="0.0.4",
+    version="0.0.5",
     author="Sergey Parshin",
     author_email="s.parshin@yadro.com",
     description="Parser for lspci output on remote or local machines",
@@ -19,9 +19,9 @@ setuptools.setup(
     install_requires=install_requires,
     classifiers=[
         "Development Status :: 4 - Beta",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "License :: OSI Approved :: MIT License",
         "Operating System :: Unix",
     ]

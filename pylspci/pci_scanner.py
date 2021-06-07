@@ -1,7 +1,9 @@
 import re
-from typing import Union, List, TextIO
+import typing
 
-from .consoles import SSHConsole, LocalConsole
+import fabric
+import invoke
+
 from .pci_parser import PCIParser, PCIDevice
 
 
@@ -10,11 +12,11 @@ class DoesNotExist(Exception):
         self.arguments = kwargs
 
     def __str__(self):
-        return 'Unable to find PCI Device matching: {query}'.format(query=str(self.arguments))
+        return f'Unable to find PCI Device matching: {str(self.arguments)}'
 
 
 class PCISelect(object):
-    def __init__(self, devices: List[PCIDevice]):
+    def __init__(self, devices: typing.List[PCIDevice]):
         self._devices = devices
         self._index = 0
 
@@ -38,7 +40,7 @@ class PCISelect(object):
         else:
             return PCISelect(devices=self._devices)
 
-    def get(self, **kwargs) -> Union[PCIDevice, None]:
+    def get(self, **kwargs) -> PCIDevice:
         result = self.select(**kwargs)
         if result.count() != 0:
             return next(result)
@@ -48,41 +50,65 @@ class PCISelect(object):
 
 # noinspection PyBroadException
 class ScannerPCI(object):
-    def __init__(self, ip: str, username: str = None, password: str = None, port: int = 22, logfile: TextIO = None):
+    def __init__(self, ip: str, username: str = None, password: str = None, port: int = 22, logfile: typing.TextIO = None):
         self.ip = ip
         self.username = username
         self.password = password
         self.port = port
         self.logfile = logfile
-        self._parser: Union[PCIParser, None] = None
-        self._console: Union[SSHConsole, LocalConsole, None] = None
 
-    def _get_console(self) -> Union[SSHConsole, LocalConsole]:
+        self._parser: typing.Optional[PCIParser] = None
+        self._console: typing.Optional[fabric.Connection] = None
+
+    def _get_console(self) -> fabric.Connection:
         if self._console is None:
-            if self.ip == '127.0.0.1' or self.ip == 'localhost':
-                self._console = LocalConsole(
-                    password=self.password,
-                    logfile=self.logfile
-                )
-            else:
-                self._console = SSHConsole(
-                    ip=self.ip,
-                    username=self.username,
-                    password=self.password,
-                    port=self.port,
-                    logfile=self.logfile
-                )
+            self._console = fabric.Connection(
+                host=self.ip,
+                user=self.username,
+                port=self.port,
+                config=fabric.Config(),
+                connect_kwargs={
+                    'password': self.password,
+                    'look_for_keys': False,
+                    'allow_agent': False
+                })
         return self._console
 
-    def _get_pci_addresses(self) -> List[str]:
+    def _run_command(self, command: str) -> typing.List[str]:
+        pattern = r'\[sudo\].*:'
+        sudo_watcher = invoke.Responder(pattern=pattern, response=f'{self.password}\n')
+
+        if self.username != 'root':
+            command = f'sudo {command}'
+
+        if self.logfile is not None:
+            self.logfile.write(f'{self.username}@{self.ip}:~$ {command}')
+
+        if self.ip == '127.0.0.1':
+            result: fabric.Result = self._get_console().local(command, pty=True, hide='both', watchers=[sudo_watcher])
+        else:
+            result: fabric.Result = self._get_console().run(command, pty=True, hide='both', watchers=[sudo_watcher])
+
+        output = [line for line in result.stdout.splitlines() if not bool(re.match(pattern, line))]
+
+        if self.logfile is not None:
+            for line in output:
+                self.logfile.write(line)
+
+            self.logfile.write(f'{self.username}@{self.ip}:~$ echo $?')
+            self.logfile.write(f'{self.username}@{self.ip}:~$ {result.exited}')
+
+        return output
+
+    def _get_pci_addresses(self) -> typing.List[str]:
         """
         Get all PCI addresses from target machine device
         :return: List of PCI addresses
         """
-        result: List[str] = []
+        result: typing.List[str] = []
         try:
             command = "lspci -D | grep -o -e '[0-9A-Za-z]\{4\}:[0-9A-Za-z]\{2\}:[0-9A-Za-z]\{2\}.[0-9A-Za-z]\{1\}' | sed $'s/[^[:print:]]//g'"
-            reply = self._get_console().run_command(command=command, sudo=True)
+            reply = self._run_command(command=command)
             for line in reply:
                 if bool(re.match(r"""[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.[0-9a-fA-F]""", line)):
                     result.append(line)
@@ -91,7 +117,7 @@ class ScannerPCI(object):
         finally:
             return result
 
-    def _scan_single_pci_device(self, address: str) -> Union[List[str], None]:
+    def _scan_single_pci_device(self, address: str) -> typing.Optional[typing.List[str]]:
         """
         Scan PCI device
         :param address: Address target to scan
@@ -99,33 +125,41 @@ class ScannerPCI(object):
         """
         result = None
         try:
-            command = 'lspci -s {address} -D -vv'.format(address=address)
-            result = self._get_console().run_command(command=command, sudo=True)
+            result = self._run_command(command=f'lspci -s {address} -D -vv')
         except Exception as error:
             print(error)
         finally:
             return result
 
-    def _get_pci(self, force_rescan: bool = False) -> List[PCIDevice]:
+    def _get_pci(self, force_rescan: bool = False) -> typing.List[PCIDevice]:
         if self._parser is None or force_rescan is True:
             self._parser = PCIParser(data=[self._scan_single_pci_device(address=address) for address in self._get_pci_addresses()])
         return self._parser.devices
 
     def pci_rescan(self) -> None:
-        self._get_console().run_command(command="sh -c 'echo 1 > /sys/bus/pci/rescan'", sudo=True)
+        self._run_command(command="sh -c 'echo 1 > /sys/bus/pci/rescan'")
 
     def select(self, force_rescan: bool = False, **kwargs) -> PCISelect:
         return PCISelect(devices=self._get_pci(force_rescan=force_rescan)).select(**kwargs)
 
-    def get(self, force_rescan: bool = False, **kwargs) -> Union[PCIDevice, None]:
+    def get(self, force_rescan: bool = False, **kwargs) -> typing.Optional[PCIDevice]:
         return self.select(force_rescan=force_rescan).get(**kwargs)
 
     def get_connected(self, parent: PCIDevice, force_rescan: bool = False) -> PCISelect:
         if parent.is_host_bridge:
-            return PCISelect(devices=[d for d in self.select(force_rescan=force_rescan, addr_dom=parent.addr_dom, addr_bus=parent.addr_bus) if d != parent])
+            return PCISelect(devices=[d for d in self.select(
+                force_rescan=force_rescan,
+                addr_dom=parent.addr_dom,
+                addr_bus=parent.addr_bus) if d != parent])
         elif parent.is_root_port or parent.is_downstream:
-            return PCISelect(devices=[d for d in self.select(force_rescan=force_rescan, addr_dom=parent.addr_dom, addr_bus=parent.pci_bus.secondary)])
+            return PCISelect(devices=[d for d in self.select(
+                force_rescan=force_rescan,
+                addr_dom=parent.addr_dom,
+                addr_bus=parent.pci_bus.secondary)])
         elif parent.is_upstream:
-            return PCISelect(devices=[d for d in self.select(force_rescan=force_rescan, is_downstream=True) if d.pci_bus.primary == parent.pci_bus.secondary])
+            return PCISelect(devices=[d for d in self.select(
+                force_rescan=force_rescan,
+                addr_dom=parent.addr_dom,
+                is_downstream=True) if d.pci_bus.primary == parent.pci_bus.secondary])
         else:
             return PCISelect(devices=[])
