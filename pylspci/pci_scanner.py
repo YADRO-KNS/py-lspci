@@ -142,7 +142,7 @@ class ScannerPCI(object):
     def select(self, force_rescan: bool = False, **kwargs) -> PCISelect:
         return PCISelect(devices=self._get_pci(force_rescan=force_rescan)).select(**kwargs)
 
-    def get(self, force_rescan: bool = False, **kwargs) -> typing.Optional[PCIDevice]:
+    def get(self, force_rescan: bool = False, **kwargs) -> PCIDevice:
         return self.select(force_rescan=force_rescan).get(**kwargs)
 
     def get_connected(self, parent: PCIDevice, force_rescan: bool = False) -> PCISelect:
@@ -163,3 +163,9 @@ class ScannerPCI(object):
                 is_downstream=True) if d.pci_bus.primary == parent.pci_bus.secondary])
         else:
             return PCISelect(devices=[])
+
+    def get_all_connected_devices(self, parent: PCIDevice, force_rescan: bool = False) -> typing.List[PCIDevice]:
+        connected = [parent]
+        for connected_device in self.get_connected(parent=parent, force_rescan=force_rescan):
+            connected.extend(self.get_all_connected_devices(connected_device))
+        return connected
