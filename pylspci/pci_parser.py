@@ -49,11 +49,17 @@ class PCIAddress(object):
     def __str__(self) -> str:
         return self.address
 
-    def __eq__(self, other: 'PCIAddress'):
-        return self.address.upper() == other.address.upper()
+    def __eq__(self, other):
+        if type(other) == PCIAddress:
+            return self.address.upper() == other.address.upper()
+        elif type(other) == str:
+            return self.address.upper() == other.upper()
 
     def __ne__(self, other):
-        return self.address.upper() != other.address.upper()
+        if type(other) == PCIAddress:
+            return self.address.upper() != other.address.upper()
+        elif type(other) == str:
+            return self.address.upper() != other.upper()
 
 
 class PCIDevice(object):
