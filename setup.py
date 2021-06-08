@@ -3,9 +3,6 @@ import setuptools
 with open('README.md', "r") as readme:
     long_description = readme.read()
 
-with open('requirements.txt') as fp:
-    install_requires = fp.read()
-
 setuptools.setup(
     name="py-lspci",
     version="0.0.5",
@@ -16,7 +13,10 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/YADRO-KNS/py-lspci",
     packages=setuptools.find_packages(),
-    install_requires=install_requires,
+    install_requires=[
+        "Fabric>=2.6.0"
+    ],
+    python_requires=">=3.7",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Programming Language :: Python :: 3.7",
