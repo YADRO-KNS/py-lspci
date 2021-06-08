@@ -37,6 +37,18 @@ class PCILink(object):
     def __str__(self) -> str:
         return f'[{self.width}/{self.max_width}][{self.speed}/{self.max_speed}]'
 
+    def __eq__(self, other) -> bool:
+        if type(other) == PCILink:
+            return str(self) == str(other)
+        else:
+            return False
+
+    def __ne__(self, other) -> bool:
+        if type(other) == PCILink:
+            return str(self) != str(other)
+        else:
+            return True
+
 
 class PCIAddress(object):
     def __init__(self, address: str):
@@ -54,12 +66,16 @@ class PCIAddress(object):
             return self.address.upper() == other.address.upper()
         elif type(other) == str:
             return self.address.upper() == other.upper()
+        else:
+            return False
 
     def __ne__(self, other):
         if type(other) == PCIAddress:
             return self.address.upper() != other.address.upper()
         elif type(other) == str:
             return self.address.upper() != other.upper()
+        else:
+            return True
 
 
 class PCIDevice(object):
@@ -220,6 +236,18 @@ class PCIDevice(object):
     def __str__(self) -> str:
         link = str(self.pci_link) if self.pci_link is not None else ''
         return f'{self.pci_address} {self.type} {self.name} {link}'
+
+    def __eq__(self, other) -> bool:
+        if type(other) == PCIDevice:
+            return self.address == other.address and self.type == other.type and self.name == other.name
+        else:
+            return False
+
+    def __ne__(self, other) -> bool:
+        if type(other) == PCIDevice:
+            return self.address != other.address or self.type != other.type or self.name != other.name
+        else:
+            return True
 
 
 # noinspection PyBroadException
