@@ -5,7 +5,7 @@ with open('README.md', "r") as readme:
 
 setuptools.setup(
     name="py-lspci",
-    version="0.0.6",
+    version="0.0.7",
     author="Sergey Parshin",
     author_email="s.parshin@yadro.com",
     description="Parser for lspci output on remote or local machines",
