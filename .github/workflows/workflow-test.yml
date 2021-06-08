@@ -1,33 +1,52 @@
-name: Python application
+name: Test py-lspci Library
 
-on: [push]
+on:
+  push:
+    branches:
+      - development
+      - master
+  pull_request:
+    branches:
+      - development
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        python-version: [ '3.6', '3.7', '3.8']
+        python-version: [ 3.7, 3.8, 3.9 ]
+
     name: Python ${{ matrix.python-version }} build
+
     steps:
-      - uses: actions/checkout@master
-      - name: Setup python ${{ matrix.python-version }}
-        uses: actions/setup-python@v1
+      - name: Git Checkout
+        uses: actions/checkout@v2
+
+      - name: Branch Name
+        run: echo running on branch ${GITHUB_REF##*/}
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+
+      - name: Install Dependencies
         run: |
           pip3 install --upgrade pip
           pip3 install coverage
           pip3 install codecov
           pip3 install .
-      - name: Lint with flake8
+
+      - name: Lint with Flake8
         run: |
           pip3 install flake8
           # stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      - name: Test with pytest
+
+      - name: Test with Unittest
         run: |
           coverage run -m unittest discover tests/
