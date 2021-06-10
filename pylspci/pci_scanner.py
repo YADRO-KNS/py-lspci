@@ -50,12 +50,13 @@ class PCISelect(object):
 
 # noinspection PyBroadException
 class ScannerPCI(object):
-    def __init__(self, ip: str, username: str = None, password: str = None, port: int = 22, logfile: typing.TextIO = None):
+    def __init__(self, ip: str, username: str = None, password: str = None, port: int = 22, logfile: typing.TextIO = None, timeout: int = 10):
         self.ip = ip
         self.username = username
         self.password = password
         self.port = port
         self.logfile = logfile
+        self.timeout = timeout
 
         self._parser: typing.Optional[PCIParser] = None
         self._console: typing.Optional[fabric.Connection] = None
@@ -67,6 +68,7 @@ class ScannerPCI(object):
                 user=self.username,
                 port=self.port,
                 config=fabric.Config(),
+                connect_timeout=self.timeout,
                 connect_kwargs={
                     'password': self.password,
                     'look_for_keys': False,
@@ -133,6 +135,7 @@ class ScannerPCI(object):
 
     def _get_pci(self, force_rescan: bool = False) -> typing.List[PCIDevice]:
         if self._parser is None or force_rescan is True:
+            self._get_console().open()
             self._parser = PCIParser(data=[self._scan_single_pci_device(address=address) for address in self._get_pci_addresses()])
         return self._parser.devices
 
